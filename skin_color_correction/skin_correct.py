@@ -108,22 +108,25 @@ if __name__ == "__main__":
 
     # check input arguments
     for arg in vars(args):
-        if not os.path.exists(getattr(args, arg)):
-            print("Cannot find folder {}: {}".format(arg, getattr(args, arg)))
-            exit()
-        elif len(os.listdir(getattr(args, arg))) < 1:
-            print("Folder is empty: {}".format(getattr(args, arg)))
-            exit()
-
+        if arg != "output_dir":
+            if not os.path.exists(getattr(args, arg)):
+                print("Cannot find folder {}: {}".format(arg, getattr(args, arg)))
+                exit()
+            elif len(os.listdir(getattr(args, arg))) < 1:
+                print("Folder is empty: {}".format(getattr(args, arg)))
+                exit()
     mask_body_fname = os.path.join(args.body_mask, os.listdir(args.body_mask)[0])
+    assert os.path.isfile(mask_body_fname)
     mask_body = cv2.imread(mask_body_fname, -1)
     mask_body = get_mask(mask_img=mask_body, del_labels="LIP_DEL" if args.body_mask.endswith("_lip.png") else "ATR_DEL", verbose=VERBOSE, verbose_name="01_body")
 
     mask_face_fname = os.path.join(args.head_mask, os.listdir(args.head_mask)[0])
+    assert os.path.isfile(mask_face_fname)
     mask_face = cv2.imread(mask_face_fname, -1)
     mask_face = get_mask(mask_img=mask_face, del_labels="LIP_DEL" if args.body_mask.endswith("_lip.png") else "ATR_DEL", verbose=VERBOSE, verbose_name="02_head")
 
     img_face_fname = os.path.join(args.head_img, os.listdir(args.head_img)[0])
+    assert os.path.isfile(img_face_fname)
     img_face = cv2.imread(img_face_fname, -1)
     if img_face.shape[-1] > 3:
         trans_mask = img_face[:, :, 3] == 0
@@ -133,6 +136,7 @@ if __name__ == "__main__":
     skin_color_face_BGR = get_skin_color(img_face, mask_face)
 
     img_body_fname = os.path.join(args.body_img, os.listdir(args.body_img)[0])
+    assert os.path.isfile(img_body_fname)
     img_body = cv2.imread(img_body_fname, -1)
     if img_body.shape[-1] > 3:
         trans_mask = img_body[:, :, 3] == 0
