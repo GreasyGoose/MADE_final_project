@@ -10,13 +10,13 @@ DEFAULT_LABELS = "mask_labels.json"
 VERBOSE = False
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--head_img", type=str, default=r"sample_img\head\head.png", help="Path to head img")
-parser.add_argument("--head_mask", type=str, default=r"sample_img\head\head_mask_lip.png",
-                    help="Path to head segmentation mask img")
+parser.add_argument("--head_img", type=str, default=r"sample_img\head", help="Path to folder with head img")
+parser.add_argument("--head_mask", type=str, default=r"sample_img\head_mask_lip",
+                    help="Path to folder with head segmentation mask img")
 
-parser.add_argument("--body_img", type=str, default=r"sample_img\body\body.jpg", help="Path to body img")
-parser.add_argument("--body_mask", type=str, default=r"sample_img\body\body_mask_atr.png",
-                    help="Path to body segmentation mask img")
+parser.add_argument("--body_img", type=str, default=r"sample_img\body", help="Path to folder with body img")
+parser.add_argument("--body_mask", type=str, default=r"sample_img\body_mask_atr",
+                    help="Path to folder with body segmentation mask img")
 parser.add_argument("--output_dir", type=str, default=r"output", help="Output path")
 args = parser.parse_args()
 
@@ -109,16 +109,22 @@ if __name__ == "__main__":
     # check input arguments
     for arg in vars(args):
         if not os.path.exists(getattr(args, arg)):
-            print("Cannot find {}: {}".format(arg, getattr(args, arg)))
+            print("Cannot find folder {}: {}".format(arg, getattr(args, arg)))
+            exit()
+        elif len(os.listdir(getattr(args, arg))) < 1:
+            print("Folder is empty: {}".format(getattr(args, arg)))
             exit()
 
-    mask_body = cv2.imread(args.body_mask, -1)
+    mask_body_fname = os.path.join(args.body_mask, os.listdir(args.body_mask)[0])
+    mask_body = cv2.imread(mask_body_fname, -1)
     mask_body = get_mask(mask_img=mask_body, del_labels="LIP_DEL" if args.body_mask.endswith("_lip.png") else "ATR_DEL", verbose=VERBOSE, verbose_name="01_body")
 
-    mask_face = cv2.imread(args.head_mask, -1)
+    mask_face_fname = os.path.join(args.head_mask, os.listdir(args.head_mask)[0])
+    mask_face = cv2.imread(mask_face_fname, -1)
     mask_face = get_mask(mask_img=mask_face, del_labels="LIP_DEL" if args.body_mask.endswith("_lip.png") else "ATR_DEL", verbose=VERBOSE, verbose_name="02_head")
 
-    img_face = cv2.imread(args.head_img, -1)
+    img_face_fname = os.path.join(args.head_img, os.listdir(args.head_img)[0])
+    img_face = cv2.imread(img_face_fname, -1)
     if img_face.shape[-1] > 3:
         trans_mask = img_face[:, :, 3] == 0
         img_face[trans_mask] = [255, 255, 255, 255]
@@ -126,7 +132,8 @@ if __name__ == "__main__":
 
     skin_color_face_BGR = get_skin_color(img_face, mask_face)
 
-    img_body = cv2.imread(args.body_img, -1)
+    img_body_fname = os.path.join(args.body_img, os.listdir(args.body_img)[0])
+    img_body = cv2.imread(img_body_fname, -1)
     if img_body.shape[-1] > 3:
         trans_mask = img_body[:, :, 3] == 0
         img_body[trans_mask] = [255, 255, 255, 255]
@@ -153,6 +160,6 @@ if __name__ == "__main__":
         print("Skin/no skin img saved")
 
     skin_swap = cv2.add(no_skin_img, skin_img)
-    cv2.imwrite(os.path.join(args.output_dir, os.path.basename(args.head_img)), skin_swap)
+    cv2.imwrite(os.path.join(args.output_dir, os.path.basename(img_body_fname)), skin_swap)
     print("Finished")
 
