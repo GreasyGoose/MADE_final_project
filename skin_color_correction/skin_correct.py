@@ -96,7 +96,8 @@ def skin_mask_refinement(skin_color, img, mask, verbose=False):
         return final_mask
     else:
         print("Skin color out of default range. No mask refinement.")
-        return mask
+        final_mask = blurred_mask
+        return final_mask
 
 
 
