@@ -22,6 +22,13 @@ args = parser.parse_args()
 
 
 def get_mask(mask_img, del_labels, verbose=False, verbose_name=""):
+    """
+    :param mask_img: image of mask (ATR or LIP)
+    :param del_labels: name of labels to delete from label dict [labels in dict should be in RGB format]
+    :param verbose: save intermediate results in output folder if True
+    :param verbose_name: name of saved intermediate file
+    :return: mask img of 1 and 0
+    """
     f = open(DEFAULT_LABELS)
     labels = json.load(f)
     f.close()
@@ -33,26 +40,37 @@ def get_mask(mask_img, del_labels, verbose=False, verbose_name=""):
             mask_img[idxs[0], idxs[1]] = 0
     mask_img[np.any(mask_img != [0, 0, 0], axis=-1)] = [1, 1, 1]
     if verbose:
-        cv2.imwrite(os.path.join(args.output_dir, verbose_name + "_skin_mask.png"), mask_img)
+        cv2.imwrite(os.path.join(args.output_dir, verbose_name + "_skin_mask.png"), 255 * mask_img)
         print(f"Skin mask saved: {verbose_name}_skin_mask.png")
     return mask_img
 
 
 
 def get_skin_color(img, mask):
-            target_pixels = img[mask != [0, 0, 0]] # pixels under mask
-            target_pixels = target_pixels.reshape((len(target_pixels) // 3, 3))
-            clt = KMeans(n_clusters=4)
-            clt.fit(target_pixels)
-            hist = centroid_histogram(clt)
-            skin_color = get_color(hist, clt.cluster_centers_)
-            # Return the color.
-            return np.int16(skin_color)
+    target_pixels = img[mask != [0, 0, 0]] # pixels under mask
+    target_pixels = target_pixels.reshape((len(target_pixels) // 3, 3))
+    clt = KMeans(n_clusters=4)
+    clt.fit(target_pixels)
+    hist = centroid_histogram(clt)
+    skin_color = get_color(hist, clt.cluster_centers_)
+    return np.int16(skin_color)
 
 
 def skin_mask_refinement(skin_color, img, mask, verbose=False):
     skin_color_hsv = cv2.cvtColor(np.uint8([[skin_color]]), cv2.COLOR_BGR2HSV)[0][0]
     img_HSV = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+
+    blurred_mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
+    blurred_mask = cv2.pyrUp(255 * blurred_mask)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    blurred_mask = cv2.morphologyEx(blurred_mask, cv2.MORPH_DILATE, kernel)
+
+    for i in range(0, 15):
+        blurred_mask = cv2.medianBlur(blurred_mask, 7)
+    blurred_mask = cv2.pyrDown(blurred_mask)
+    _, blurred_mask = cv2.threshold(blurred_mask, 150, 255, cv2.THRESH_BINARY)
+    blurred_mask = np.clip(blurred_mask / 255.0, 0, 1).astype(np.uint8)
+
     if skinRange(skin_color_hsv):
         Hue = 10
         Saturation = 65
@@ -71,9 +89,9 @@ def skin_mask_refinement(skin_color, img, mask, verbose=False):
             lower = result[1]
             upper = result[2]
             color_skinMask = cv2.inRange(img_HSV, lower, upper)
-        final_mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY) * color_skinMask
+        final_mask = blurred_mask * color_skinMask
         if verbose:
-            cv2.imwrite(os.path.join(args.output_dir, "refined_mask.png"), final_mask)
+            cv2.imwrite(os.path.join(args.output_dir, "03_refined_skin_mask.png"), final_mask)
             print("Refined mask saved.")
         return final_mask
     else:
@@ -95,10 +113,10 @@ if __name__ == "__main__":
             exit()
 
     mask_body = cv2.imread(args.body_mask, -1)
-    mask_body = get_mask(mask_img=mask_body, del_labels="LIP_DEL" if args.body_mask.endswith("_lip.png") else "ATR_DEL", verbose=VERBOSE, verbose_name="body")
+    mask_body = get_mask(mask_img=mask_body, del_labels="LIP_DEL" if args.body_mask.endswith("_lip.png") else "ATR_DEL", verbose=VERBOSE, verbose_name="01_body")
 
     mask_face = cv2.imread(args.head_mask, -1)
-    mask_face = get_mask(mask_img=mask_face, del_labels="LIP_DEL" if args.body_mask.endswith("_lip.png") else "ATR_DEL", verbose=VERBOSE, verbose_name="head")
+    mask_face = get_mask(mask_img=mask_face, del_labels="LIP_DEL" if args.body_mask.endswith("_lip.png") else "ATR_DEL", verbose=VERBOSE, verbose_name="02_head")
 
     img_face = cv2.imread(args.head_img, -1)
     if img_face.shape[-1] > 3:
@@ -128,11 +146,12 @@ if __name__ == "__main__":
     no_skin_img = cv2.bitwise_and(img_body, img_body, mask=cv2.bitwise_not(mask_body))
     skin_img = cv2.bitwise_and(res_img, res_img, mask=mask_body)
     if VERBOSE:
-        cv2.imwrite(os.path.join(args.output_dir, "body_img.png"), img_body)
-        cv2.imwrite(os.path.join(args.output_dir, "res_img.png"), res_img)
-        cv2.imwrite(os.path.join(args.output_dir, "no_skin_img.png"), no_skin_img)
-        cv2.imwrite(os.path.join(args.output_dir, "skin_img.png"), skin_img)
+        cv2.imwrite(os.path.join(args.output_dir, "04_body_img.png"), img_body)
+        cv2.imwrite(os.path.join(args.output_dir, "05_no_skin_img.png"), no_skin_img)
+        cv2.imwrite(os.path.join(args.output_dir, "06_skin_img.png"), skin_img)
+        cv2.imwrite(os.path.join(args.output_dir, "07_color_corrected.png"), res_img)
         print("Skin/no skin img saved")
+
     skin_swap = cv2.add(no_skin_img, skin_img)
     cv2.imwrite(os.path.join(args.output_dir, os.path.basename(args.head_img)), skin_swap)
     print("Finished")
